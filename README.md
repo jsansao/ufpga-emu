@@ -5,7 +5,8 @@ Emulador de hardware descrito em Verilog executado em microcontroladores de 32 b
 ## Pré-requisitos
 
 - Python 3.10+
-- PlatformIO (`pip install platformio` ou `~/.venvs/pio/bin/pio`)
+- PlatformIO 6.0+ — `pip install -r requirements.txt` (recomendado) ou `pip install platformio`.
+  Garanta `pio` no `PATH` (`export PATH=$HOME/.local/bin:$PATH` se usou `--break-system-packages`).
 - ESP32: toolchain ESP-IDF (instalado pelo PlatformIO)
 - Linux (para VCD writer e `hal_stimulus`)
 
@@ -35,9 +36,9 @@ examples/
   *.v                            # Circuitos Verilog de exemplo
   stim_*.csv                     # Estímulo CSV com auto-assertions
 tests/
-  test_parser.py                 # 71 testes: parser, codegen, generate, multi-file, task/function
+  test_parser.py                 # 75 testes: parser, codegen, generate, multi-file, task/function
   test_testbenches.py            # 27 testes: testbenches + stim + compile + VCD
-platformio.ini                   # 55 envs (25 ESP32, 19 PC stim, 1 RP2040, ...)
+platformio.ini                   # 134 envs (26 ESP32, 27 RP2040, 27 Due, 27 ESP8266, 27 PC)
 ```
 
 ## PC Toolchain
@@ -199,18 +200,24 @@ vset 35 0    # pin 35 = 0
 ## Executar Testes
 
 ```bash
-# Suite completa
-python3 -m pytest tests/
+# Instalar dependências (uma vez)
+pip install -r requirements.txt  # instala pytest, platformio, pyserial; garante pio no PATH
 
-# Testes específicos
+# Suite completa (102 testes) — requer PlatformIO + gcc
+python3 -m pytest tests/ -v
+
+# Sem PlatformIO (só parser/codegen, 75 testes)
 python3 -m pytest tests/test_parser.py -v
+# Integração PC (27 testes, compila via pio run -e pc-* — requer gcc)
 python3 -m pytest tests/test_testbenches.py -v
 
-# Compilar todos os envs
+# Compilar todos os envs (opcional)
 pio run
 ```
 
-**98 testes** (71 parser/codegen + 27 testbenches/stim/VCD/compile).
+> Nota: `tests/test_testbenches.py` chama `pio run -e pc-test-*`/`pc-stim-*` e falha com `FileNotFoundError` se `pio` não estiver no `PATH`. Na primeira execução o PlatformIO baixa `native@1.2.1` e `tool-scons`.
+
+**102 testes** (75 parser/codegen + 27 testbenches/stim/VCD/compile).
 
 ## Construtos Verilog Suportados
 
