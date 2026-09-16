@@ -1,0 +1,430 @@
+\documentclass[10pt, aspectratio=169]{beamer}
+
+\usepackage[brazil]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
+
+% ----------------------------------------------------------------------
+% Tema
+% ----------------------------------------------------------------------
+\usetheme[progressbar=frametitle, numbering=fraction]{metropolis}
+\metroset{block=fill}
+
+\definecolor{ufsjgreen}{HTML}{1B5E20}
+\definecolor{ufsjblue}{HTML}{0D47A1}
+\definecolor{codegreen}{RGB}{0,128,0}
+\setbeamercolor{alerted text}{fg=ufsjgreen}
+
+% ----------------------------------------------------------------------
+% Listings (Verilog e C)
+% ----------------------------------------------------------------------
+\lstdefinelanguage{verilog}{
+  morekeywords={module,endmodule,input,output,inout,wire,reg,parameter,
+    localparam,always,posedge,negedge,assign,begin,end,if,else,case,
+    endcase,for,repeat,generate,endgenerate,genvar,task,endtask,
+    function,endfunction,integer,or,and},
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]"
+}
+\lstset{
+  language=verilog,
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{ufsjblue}\bfseries,
+  commentstyle=\color{codegreen},
+  stringstyle=\color{ufsjgreen},
+  frame=single,
+  rulecolor=\color{gray!40},
+  backgroundcolor=\color{gray!8},
+  columns=fullflexible,
+  breaklines=true,
+  aboveskip=4pt, belowskip=4pt,
+}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+% ----------------------------------------------------------------------
+% Metadados
+% ----------------------------------------------------------------------
+\title[uFPGA-Emu: Ensino em Microcontroladores]{uFPGA-Emu: Ensino de Circuitos Digitais e Arquitetura de Computadores em Microcontroladores de Baixo Custo}
+\subtitle{Resumo do projeto desenvolvido --- apresentação interna ao grupo de pesquisa}
+\author{João Pedro Hallack Sansão}
+\institute{DTECH -- Universidade Federal de São João del-Rei (UFSJ), Campus Alto Paraopeba}
+\date{\today}
+
+\begin{document}
+
+% ======================================================================
+% 1. Título
+% ======================================================================
+\begin{frame}[plain]
+  \vspace*{-2.6em}
+  \setbeamerfont{title}{size=\Large}
+  \titlepage
+  \begin{center}
+    \scriptsize
+    \href{https://github.com/jsansao/ufpga-emu}{github.com/jsansao/ufpga-emu}
+  \end{center}
+\end{frame}
+
+% ======================================================================
+% 2. Problema e motivação
+% ======================================================================
+\begin{frame}{Problema e motivação}
+  \begin{block}{Custo de FPGAs educacionais}
+    \small Placas FPGA educacionais custam de \alert{US\$ 25 a US\$ 130};
+    um laboratório com 40 alunos passa de \alert{US\$ 5.200} (ex.: DE10-Lite).
+  \end{block}
+  \begin{block}{Simuladores em PC resolvem o custo, mas...}
+    \small A atividade fica em ambiente \alert{abstrato}: sem LEDs, botões,
+    protoboard e \alert{experiência física}.
+  \end{block}
+  \begin{block}{Lacuna pedagógica}
+    \small Entre software puro e hardware dedicado caro, falta um degrau de
+    entrada barato com interação física real.
+  \end{block}
+\end{frame}
+
+% ======================================================================
+% 3. Ideia central
+% ======================================================================
+\begin{frame}{Ideia central}
+  \centering
+  \large
+  ``\textbf{Traduzir automaticamente} Verilog sintetizável para \textbf{C} e
+  executar o circuito em \textbf{microcontroladores de baixo custo}.''
+  \vspace{0.5em}
+
+  \begin{columns}[t]
+    \begin{column}{0.48\textwidth}
+      \begin{exampleblock}{Plataformas alvo}
+        \small
+        \begin{itemize}
+          \item ESP32 (US\$ 3--5) \qquad RP2040 (US\$ 1)
+          \item ESP8266 D1 Mini (US\$ 3)
+          \item Arduino Due (US\$ 10)
+          \item Raspberry Pi 3 B+ (US\$ 35)
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{exampleblock}{Experiência física}
+        \small
+        \begin{itemize}
+          \item LEDs, botões e buzzers reais
+          \item Montagem em protoboard
+          \item Telemetria serial em tempo real
+          \item Kit por aluno \alert{$<$ US\$ 10}
+        \end{itemize}
+      \end{exampleblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ======================================================================
+% 4. Arquitetura
+% ======================================================================
+\begin{frame}{Arquitetura: pipeline Verilog $\to$ C $\to$ execução}
+  \centering
+  \begin{tikzpicture}[
+    node distance=0.28cm and 0.6cm,
+    block/.style={draw, rectangle, rounded corners, minimum width=3.1cm,
+      minimum height=0.72cm, align=center, fill=blue!10, draw=blue!50,
+      thick, font=\scriptsize},
+    file/.style={draw, rectangle, minimum width=2.6cm, minimum height=0.62cm,
+      align=center, fill=yellow!15, draw=yellow!60!black, thick,
+      font=\ttfamily\scriptsize},
+    hw/.style={draw, rectangle, rounded corners, minimum width=3.1cm,
+      minimum height=0.72cm, align=center, fill=orange!15,
+      draw=orange!50!black, thick, font=\scriptsize},
+    comm/.style={draw, rectangle, rounded corners, minimum width=2.6cm,
+      minimum height=0.65cm, align=center, fill=purple!10, draw=purple!50,
+      thick, font=\scriptsize},
+    aux/.style={draw, rectangle, rounded corners, minimum width=2.6cm,
+      minimum height=0.65cm, align=center, fill=green!10,
+      draw=green!40!black, thick, font=\scriptsize},
+    arrow/.style={-{Stealth}, thick, draw=gray!80},
+    doublearrow/.style={{Stealth}-{Stealth}, thick, draw=gray!80}
+  ]
+    \node (vfile) [file] {circuito.v};
+    \node (parser) [block, below=of vfile] {Parser / AST};
+    \node (codegen) [block, below=of parser] {Codegen C};
+    \node (cfile) [file, below=of codegen] {circuito.c};
+    \node (build) [block, below=of cfile] {Build (PlatformIO / PC)};
+    \node (runtime) [block, below=of build] {Runtime + HAL};
+    \node (exec) [hw, below=of runtime] {Execução (5 plataformas + PC)};
+    \node (obs) [comm, right=of runtime] {Telemetria / VCD};
+    \node (tbgen) [aux, right=of parser] {Gerador de testbench};
+    \node (stim) [file, below=of tbgen] {stim\_test\_*.c};
+    \node (io) [aux, left=of runtime] {GPIO / clock virtual};
+
+    \draw [arrow] (vfile) -- (parser);
+    \draw [arrow] (parser) -- (codegen);
+    \draw [arrow] (codegen) -- (cfile);
+    \draw [arrow] (cfile) -- (build);
+    \draw [arrow] (build) -- (runtime);
+    \draw [arrow] (runtime) -- (exec);
+    \draw [doublearrow] (runtime) -- (obs);
+    \draw [doublearrow] (runtime) -- (io);
+    \draw [arrow] (parser) -- (tbgen);
+    \draw [arrow] (tbgen) -- (stim);
+    \draw [arrow] (stim.south) |- (build.east);
+  \end{tikzpicture}
+\end{frame}
+
+% ======================================================================
+% 5. Toolchain
+% ======================================================================
+\begin{frame}{Toolchain em Python (\code{pc\_tool})}
+  \begin{columns}[t]
+    \begin{column}{0.55\textwidth}
+      \textbf{Parser + Codegen}
+      \begin{itemize}
+        \item Lexer manual + parser recursivo descendente $\to$ AST
+        \item \code{always} com \code{posedge/negedge}, \code{if/else},
+          \code{case}, \code{for}, \code{repeat}
+        \item \code{generate} aninhado, \code{task/function}, instanciação
+          de submódulos (flatten)
+        \item Reduction, ternário, concatenação, part-select, \code{===}
+      \end{itemize}
+      \textbf{Otimizações}
+      \begin{itemize}
+        \item Dead register elimination
+        \item Constant folding e \code{<< 0} suppression
+        \item Detecção de borda global
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \textbf{Tempo de geração (laptop i5, Python 3.11)}
+      \begin{center}
+        \begin{tabular}{lr}
+          \toprule
+          Circuito & Tempo \\
+          \midrule
+          blinky (15 linhas) & 12 ms \\
+          alu (62) & 25 ms \\
+          uart\_tx (96) & 35 ms \\
+          tiny\_cpu (124) & 42 ms \\
+          \bottomrule
+        \end{tabular}
+      \end{center}
+      ~3 mil linhas de Verilog/s.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ======================================================================
+% 6. Exemplo de tradução
+% ======================================================================
+\begin{frame}{Exemplo de tradução: \code{counter}}
+  \begin{columns}[t]
+    \begin{column}{0.48\textwidth}
+      \textbf{Verilog (18 linhas)}
+      \lstinputlisting[basicstyle=\ttfamily\tiny,
+        numbers=none]{snippets/counter.v}
+    \end{column}
+    \begin{column}{0.52\textwidth}
+      \textbf{C gerado (semântica preservada)}
+      \lstinputlisting[language=C, basicstyle=\ttfamily\tiny,
+        numbers=none]{snippets/counter_c.c}
+      \begin{itemize}
+        \item \code{clk\_edge}: detecção de borda = \code{posedge}
+        \item Guard \code{rst || clk\_edge}: bordas de rst e clk
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ======================================================================
+% 7. Runtime e HAL
+% ======================================================================
+\begin{frame}{Runtime em C e HAL}
+  \begin{columns}[t]
+    \begin{column}{0.48\textwidth}
+      \small
+      \textbf{Clock virtual}
+      \begin{itemize}
+        \item Timer interno alterna o sinal de clock
+        \item Sem sinal externo (portátil p/ qualquer MCU)
+      \end{itemize}
+      \textbf{Loop de emulação} (\code{emulator\_step})
+      \begin{enumerate}
+        \item Lê entradas (GPIO físico ou virtual)
+        \item \code{circuit\_eval()} um ciclo
+        \item Escreve saídas; incrementa o clock virtual
+      \end{enumerate}
+      \textbf{Comandos via serial}
+      \begin{itemize}
+        \item \code{vset <pin> <val>} --- altera input em tempo real
+        \item Telemetria: \code{CLK=.. IN=0x.. OUT=0x.. REG0=0x..}
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \small
+      \textbf{HAL --- abstração por plataforma}
+      \begin{itemize}
+        \item \code{hal\_gpio}, \code{hal\_timer}, \code{hal\_serial},
+          \code{hal\_mutex}
+        \item Portas: ESP32, RP2040, Due, ESP8266, RPi 3 B+ e PC
+      \end{itemize}
+      \textbf{VCD opcional}
+      \begin{itemize}
+        \item Traces para visualização no GTKWave (IEEE 1364-2001)
+      \end{itemize}
+      \textbf{Testbenches gerados}
+      \begin{itemize}
+        \item CSV de estímulo $\to$ \code{stim\_test\_*.c}
+        \item Auto-assertions, execução em PC sem hardware
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ======================================================================
+% 8. Validação
+% ======================================================================
+\begin{frame}{Validação em hardware real}
+  \begin{columns}[t]
+    \begin{column}{0.5\textwidth}
+      \textbf{5 plataformas, 26 circuitos cada}
+      \begin{itemize}
+        \item \textbf{ESP32} --- Xtensa LX6, 240 MHz
+        \item \textbf{RP2040} --- Cortex-M0+, 133 MHz
+        \item \textbf{Arduino Due} --- Cortex-M3, 84 MHz
+        \item \textbf{ESP8266} (Wemos D1 Mini) --- Xtensa LX106, 80 MHz
+        \item \textbf{RPi 3 B+} --- Cortex-A53, 1,2 GHz
+      \end{itemize}
+      \vspace{0.4em}
+      Circuitos de portas lógicas a \alert{ULA de 8 bits} e
+      \alert{CPU completa de 8 bits} (\code{tiny\_cpu}).
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{102 testes automatizados}
+      \begin{itemize}
+        \item Parser e codegen (unitários)
+        \item Testbenches PC com CSV de estímulo
+        \item Testbenches de integração (compile + run)
+        \item 100\% de aprovação
+      \end{itemize}
+      \vspace{0.4em}
+      \begin{alertblock}{Avaliação}
+        Técnica, não pedagógica. Estudo controlado com alunos fica como
+        trabalho futuro.
+      \end{alertblock}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ======================================================================
+% 9. Resultados: clock virtual
+% ======================================================================
+\begin{frame}{Resultados: clock virtual por plataforma}
+  \centering
+  \begin{tabular}{lrrrrr}
+    \toprule
+    Circuito & ESP32 & RP2040 & ESP8266 & Pi 3 B+ \\
+    & \scriptsize kHz & \scriptsize kHz & \scriptsize kHz & \scriptsize kHz \\
+    \midrule
+    not\_keyword & -- & -- & 64,8 & -- \\
+    blinky & 95,2 & 90,9 & -- & 2954 \\
+    mux & 94,8 & -- & -- & 2693 \\
+    counter & 84,0 & 99,6 & -- & 2230 \\
+    fsm\_101 & 58,6 & -- & -- & 2489 \\
+    alu & 38,4 & -- & -- & -- \\
+    tiny\_cpu & 15,0 & 53,2 & 25,6 & 999 \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.6em}
+  \begin{itemize}
+    \item Clock virtual decai com a complexidade combinacional
+    \item Pi 3 B+ é $\sim$10--30$\times$ mais rápido que os MCUs
+    \item Faixa geral: \alert{15 kHz} (CPU no ESP32) a \alert{3 MHz}
+      (circuitos simples no Pi)
+    \item Valores de referência de ponto único (mesmo toolchain/firmware)
+  \end{itemize}
+\end{frame}
+
+% ======================================================================
+% 10. Custo-benefício
+% ======================================================================
+\begin{frame}{Custo-benefício}
+  \centering
+  \small
+  \begin{tabular}{lccc}
+    \toprule
+    Característica & Simulador PC & FPGA & uFPGA-Emu \\
+    \midrule
+    Custo por estação & Grátis & US\$ 25--130 & \alert{US\$ 1--5} \\
+    Experiência física & Não & Sim & \alert{Sim} \\
+    Tempo de compilação & Segundos & Minutos & Segundos \\
+    Curva de aprendizado & Baixa & Alta & \alert{Baixa} \\
+    Clock máximo & Ilimitado & MHz--GHz & $\sim$25 kHz--3 MHz \\
+    Verilog automático & -- & Síntese manual & \alert{Automático} \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.6em}
+  \begin{exampleblock}{Laboratório com 40 alunos}
+    Menos de \alert{US\$ 400} com ESP32 ou \alert{US\$ 100} com RP2040,
+    contra mais de US\$ 5.200 com placas FPGA educacionais.
+  \end{exampleblock}
+\end{frame}
+
+% ======================================================================
+% 11. Estado atual e próximos passos
+% ======================================================================
+\begin{frame}{Estado atual e próximos passos}
+  \begin{columns}[t]
+    \begin{column}{0.48\textwidth}
+      \textbf{Estado atual}
+      \begin{itemize}
+        \item Paper submetendo à \alert{IJCAE} (10 páginas)
+        \item 26 circuitos validados em 5 plataformas
+        \item 102 testes automatizados passando
+        \item Código aberto no GitHub
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Próximos passos}
+      \begin{itemize}
+        \item Estudo controlado com alunos (SUS + teste A/B)
+        \item Emular CPU \alert{RISC-V} a partir do Verilog
+        \item Port para ATmega328P (análise já feita)
+        \item Múltiplos domínios de clock
+        \item Otimizar \code{circuit\_eval()} (mais kHz)
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% ======================================================================
+% 12. Obrigado
+% ======================================================================
+\begin{frame}[plain]
+  \centering
+  \vspace{2em}
+  {\Huge Obrigado!}
+
+  \vspace{1.5em}
+  \begin{itemize}
+    \item \textbf{Contato:} \href{mailto:joao@ufsj.edu.br}{joao@ufsj.edu.br}
+    \item \textbf{ORCID:} 0000-0003-0095-2629
+    \item \textbf{Código:} \href{https://github.com/jsansao/ufpga-emu}{github.com/jsansao/ufpga-emu}
+  \end{itemize}
+
+  \vspace{1em}
+  \begin{block}{Convite à colaboração}
+    Interessados em \textbf{portar para novas plataformas}, colaborar no
+    \textbf{estudo pedagógico} ou testar a ferramenta em disciplinas,
+    entrem em contato.
+  \end{block}
+\end{frame}
+
+\end{document}

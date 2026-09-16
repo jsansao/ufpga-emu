@@ -1,0 +1,7 @@
+{
+  "name": "runtime",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "include"
+  }
+}

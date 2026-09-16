@@ -1,0 +1,3 @@
+time_us,signal,value
+80,rst,1
+85,rst,0

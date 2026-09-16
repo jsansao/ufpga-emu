@@ -1,0 +1,7 @@
+{
+  "name": "hal",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "include"
+  }
+}

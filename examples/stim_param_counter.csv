@@ -1,0 +1,3 @@
+time_us,signal,value
+0,rst,1
+5,rst,0

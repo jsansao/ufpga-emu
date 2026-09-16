@@ -1,0 +1,4 @@
+time_us,signal,value,expected
+0,inputs,17,2
+10,inputs,31,16
+20,inputs,255,30

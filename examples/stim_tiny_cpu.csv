@@ -1,0 +1,16 @@
+time_us,signal,value
+0,rst,1
+0,instr[1],1
+0,instr[3],1
+0,instr[5],1
+0,instr[7],1
+0,instr[12],1
+5,rst,0
+5,run,1
+25,instr[1],0
+25,instr[3],0
+25,instr[5],0
+25,instr[7],0
+25,instr[14],1
+45,instr[12],0
+45,instr[13],1

@@ -1,0 +1,16 @@
+name: test
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Parse + codegen tests (no hardware)
+        run: python3 -m pytest tests/test_parser.py -v --tb=short
+      - name: Compile + run all PC testbenches
+        run: python3 -m pytest tests/test_testbenches.py -v --tb=short

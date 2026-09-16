@@ -1,0 +1,6 @@
+time_us,signal,value
+0,rst,1
+5,rst,0
+5,data_in,1
+15,data_in,0
+25,data_in,1

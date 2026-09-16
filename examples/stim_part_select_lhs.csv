@@ -1,0 +1,5 @@
+time_us,signal,value
+10,value[3],1
+10,load,1
+20,value[3],0
+20,load,0

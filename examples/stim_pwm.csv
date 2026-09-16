@@ -1,0 +1,8 @@
+time_us,signal,value
+0,rst,1
+0,enable,0
+0,duty[1],1
+0,period[2],1
+5,rst,0
+5,enable,1
+50,enable,0
