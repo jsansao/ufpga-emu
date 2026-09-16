@@ -2,6 +2,7 @@
 """Testes de integracao: compila e executa testbenches C com stimuli CSV."""
 
 import re
+import shutil
 import subprocess
 import os
 import sys
@@ -10,7 +11,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-PIO = os.path.expanduser('~/.venvs/pio/bin/pio')
+PIO = (os.environ.get("PIO")
+       or shutil.which("pio")
+       or os.path.expanduser('~/.venvs/pio/bin/pio'))
 PIO_BUILD = os.path.join(os.path.dirname(__file__), '..', '.pio', 'build')
 EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), '..', 'examples')
 PROJECT_DIR = os.path.join(os.path.dirname(__file__), '..')
