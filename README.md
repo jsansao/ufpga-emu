@@ -1,6 +1,6 @@
 # uFPGA-Emu
 
-Emulador de hardware descrito em Verilog executado em microcontroladores de 32 bits (ESP32 e RP2040). Um toolchain Python traduz Verilog sintetizável para C, que é compilado e executado no firmware com clock virtual, telemetria e comandos via serial.
+Emulador de hardware descrito em Verilog executado em microcontroladores de 32 bits (ESP32, RP2040, Raspberry Pi 3 B+, Arduino Due e ESP8266). Um toolchain Python traduz Verilog sintetizável para C, que é compilado e executado no firmware com clock virtual, telemetria e comandos via serial. A alocação de pinos vive em JSON por plataforma (`firmware/pinmaps/`), não nos mains.
 
 ## Pré-requisitos
 
@@ -14,14 +14,19 @@ Emulador de hardware descrito em Verilog executado em microcontroladores de 32 b
 
 ```
 firmware/
+  pinmaps/                       # Fonte de verdade: <plat>.json (esp32, rp2040, due, esp8266, rpi)
   lib/
     hal/                         # HAL: GPIO, timer, serial, mutex
     runtime/                     # Emulator core, pin_map, telemetry, vcd_writer
   src/
     circuit_*.c                  # Gerados pelo pc_tool.cli
     stim_test_*.c                # Gerados pelo testbench_generator
-    main_esp32.c                 # Entry point unificado (ESP32)
-    main_rp2040.cpp              # Entry point RP2040
+    pinmap_*.h                   # Gerados pelo pinmap_gen (NÃO EDITAR)
+    main_esp32.c                 # Mains genéricos — nenhum é editado p/ novo circuito
+    main_rp2040.cpp
+    main_due.cpp
+    main_esp8266.cpp
+    main_rpi.c
     main_pc.c                    # Entry point PC
     examples/                    # C source + main para compilação PC (test_compile_all_examples)
 pc_tool/
@@ -30,14 +35,15 @@ pc_tool/
     lexer.py, parser.py, ast.py, registry.py, inliner.py
   codegen/
     c_generator.py               # Geração de C com edge detection, constant folding, etc
+  pinmap_gen.py                  # pinmaps/*.json → pinmap_*.h (+ --template p/ circuito novo)
   testbench_generator.py         # CSV stimulus → C testbench
-  config/                        # Config de pinos por placa
 examples/
   *.v                            # Circuitos Verilog de exemplo
   stim_*.csv                     # Estímulo CSV com auto-assertions
 tests/
   test_parser.py                 # 75 testes: parser, codegen, generate, multi-file, task/function
   test_testbenches.py            # 27 testes: testbenches + stim + compile + VCD
+  test_pinmaps.py                # 7 testes: schema, staleness, template, loader C
 platformio.ini                   # 134 envs (26 ESP32, 27 RP2040, 27 Due, 27 ESP8266, 27 PC)
 ```
 
@@ -61,6 +67,18 @@ python3 -m pc_tool.testbench_generator meu_circuito \
 ```
 
 O CSV usa o formato `time_us,signal,value,expected` com `inputs` como sinal especial contendo o packed value. A quarta coluna (`expected`) ativa auto-assertions no stim_test gerado.
+
+### Pinmap Generator: JSON → header
+
+```bash
+# 1. Emite a entrada do circuito novo (pins com "pin": null)
+python3 -m pc_tool.pinmap_gen --template -v examples/meu_circuito.v -p esp32
+
+# 2. Cole a entrada em firmware/pinmaps/esp32.json, preencha os "pin" e regenere
+python3 -m pc_tool.pinmap_gen
+```
+
+O modo default valida todos os JSONs e regenera `firmware/src/pinmap_*.h` (cadeia `#if` de circuitos + JSON embutido). Detalhes do schema em [Pinmaps por Plataforma (JSON)](#pinmaps-por-plataforma-json).
 
 ## Workflow: Adicionar um Novo Circuito
 
@@ -122,30 +140,22 @@ Também copie o `.c` gerado:
 cp firmware/src/circuit_meu_circuito.c firmware/src/examples/meu_circuito.c
 ```
 
-### 6. Integrar no ESP32
+### 6. Pinmap da plataforma alvo
 
-Em `firmware/src/main_esp32.c`, adicione dois blocos:
+Nenhum `main_*.c` é editado. A alocação de pinos vive em `firmware/pinmaps/<plat>.json`:
 
-**Pinmap** (após o último `#elif`, antes de `EMU_CIRCUIT_BLINKY`):
-
-```c
-#elif defined(EMU_CIRCUIT_MEU_CIRCUITO)
-#include "circuit_meu_circuito.c"
-#define CIRCUIT_NAME "meu_circuito"
-static const char *pinmap_json =
-    "["
-    "  {\"name\":\"clk\",\"pin\":4,\"bit\":0,\"dir\":\"input\"},"
-    "  {\"name\":\"in[0]\",\"pin\":34,\"bit\":1,\"dir\":\"input\"},"
-    "  {\"name\":\"out[0]\",\"pin\":2,\"bit\":0,\"dir\":\"output\"}"
-    "]";
+```bash
+# Gera a entrada com name/bit/dir extraídos do Verilog (pin = null)
+python3 -m pc_tool.pinmap_gen --template -v examples/meu_circuito.v -p esp32
 ```
 
-**Set virtual** (após o último `#elif`, antes de `#endif`):
+Cole a entrada no JSON da plataforma, preencha os `"pin"` físicos e regenere os headers:
 
-```c
-#elif defined(EMU_CIRCUIT_MEU_CIRCUITO)
-    hal_gpio_set_virtual(34, 0);  // in=0
+```bash
+python3 -m pc_tool.pinmap_gen
 ```
+
+`clk`/`rst` são resolvidos por nome no firmware; exceções de init (ex.: `run=1` do tiny_cpu) vão em `virtual_init`. Ver [Pinmaps por Plataforma (JSON)](#pinmaps-por-plataforma-json).
 
 ### 7. PlatformIO
 
@@ -203,13 +213,15 @@ vset 35 0    # pin 35 = 0
 # Instalar dependências (uma vez)
 pip install -r requirements.txt  # instala pytest, platformio, pyserial; garante pio no PATH
 
-# Suite completa (102 testes) — requer PlatformIO + gcc
+# Suite completa (109 testes) — requer PlatformIO + gcc
 python3 -m pytest tests/ -v
 
 # Sem PlatformIO (só parser/codegen, 75 testes)
 python3 -m pytest tests/test_parser.py -v
 # Integração PC (27 testes, compila via pio run -e pc-* — requer gcc)
 python3 -m pytest tests/test_testbenches.py -v
+# Pinmaps JSON (7 testes: schema, staleness, template, loader C)
+python3 -m pytest tests/test_pinmaps.py -v
 
 # Compilar todos os envs (opcional)
 pio run
@@ -217,7 +229,7 @@ pio run
 
 > Nota: `tests/test_testbenches.py` chama `pio run -e pc-test-*`/`pc-stim-*` e falha com `FileNotFoundError` se `pio` não estiver no `PATH`. Na primeira execução o PlatformIO baixa `native@1.2.1` e `tool-scons`.
 
-**102 testes** (75 parser/codegen + 27 testbenches/stim/VCD/compile).
+**109 testes** (75 parser/codegen + 27 testbenches/stim/VCD/compile + 7 pinmaps).
 
 ## Construtos Verilog Suportados
 
@@ -274,7 +286,34 @@ pio run
 - LED/GPIO de saída: GPIO 2
 - Outputs: GPIOs 14-19, 21-23, 25-27
 
-O mapeamento é definido no JSON `pinmap_json` dentro de `main_esp32.c`.
+O mapeamento é definido em `firmware/pinmaps/esp32.json` (ver seção abaixo) e embutido no firmware via `pinmap_esp32.h` gerado.
+
+## Pinmaps por Plataforma (JSON)
+
+Cada plataforma tem um arquivo em `firmware/pinmaps/<plat>.json` (`esp32`, `rp2040`, `due`, `esp8266`, `rpi`) com todos os seus circuitos:
+
+```json
+{
+  "counter": {
+    "pins": [
+      {"name": "clk", "pin": 4, "bit": 0, "dir": "input"},
+      {"name": "count[0]", "pin": 13, "bit": 0, "dir": "output"}
+    ],
+    "virtual_init": {}
+  },
+  "tiny_cpu": {
+    "pins": [ "..." ],
+    "virtual_init": {"run": 1}
+  }
+}
+```
+
+Regras:
+- `bit` é o índice sequencial **por direção** na palavra packed de inputs/outputs.
+- `"pin": null` só existe no template (`--template`); no JSON commitado todo `pin` é um número — o `pinmap_gen` rejeita `null`.
+- `virtual_init` liga valores iniciais por **nome de sinal** (resolvido via `pin_map_get_physical`); use para exceções como `run=1`. `clk`/`rst` são resolvidos por nome no main, sem config extra.
+- Os headers `firmware/src/pinmap_*.h` são **commitados** (MCUs não têm filesystem) e o teste `test_headers_up_to_date` quebra se você editar o JSON e esquecer de rodar `python3 -m pc_tool.pinmap_gen`.
+- Subsets por plataforma são permitidos: um circuito pode existir só no JSON do seu alvo.
 
 ## Comandos via Serial
 

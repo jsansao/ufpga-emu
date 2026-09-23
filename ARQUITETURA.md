@@ -133,6 +133,8 @@ Execução embarcada:
 
 - `firmware/src/main_esp32.c`
 - `firmware/src/main_rp2040.cpp`
+- `firmware/src/main_due.cpp`
+- `firmware/src/main_esp8266.cpp`
 - `firmware/src/main_rpi.c` (compilação direta com `gcc`, sem PlatformIO)
 
 ## Núcleo arquitetural
