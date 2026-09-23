@@ -38,7 +38,7 @@ Compilar e testar o projeto uFPGA-Emu em hardware real (ESP32, RP2040, Raspberry
 - **Hardware pendente p/ pinmaps JSON:** ESP32 **validado** (counter/tiny_cpu/decoder no hardware — ver abaixo). Pi `192.168.15.6` **offline**: respondeu 1× via SSH (sem repo em `~`, só `ls`) e caiu em seguida (`No route to host`, WiFi/sleep?).
 
 ## Next Steps
-- *(opcional, adiado por decisão do usuário)* Limpeza de órfãos: 15 `stim_test_*.c` sem underscore não referenciados no `platformio.ini` (ex.: `stim_test_addern.c`, `stim_test_fsm101.c`) e `main_rp2040.cpp.bak`/`.full`.
+- ✅ **Limpeza de órfãos:** removidos 15 `stim_test_*.c` sem underscore (ex.: `stim_test_addern.c`) + `main_rp2040.cpp.bak`/`.full` — zero referências (verificado por nome exato + globs `+<stim_test_*>` do `platformio.ini`); 109/109 testes mantidos.
 - *(aguardar novas definições)*
 
 ## Key Decisions
