@@ -78,6 +78,94 @@ int pin_map_load_file(pin_map_t *map, const char *filepath)
     return ret;
 }
 
+/* Localiza a chave '"<circuit>":' e retorna ponteiro para o '{' do objeto. */
+static const char *find_circuit(const char *json, const char *circuit)
+{
+    char key[MAX_PIN_NAME_LEN + 4];
+    snprintf(key, sizeof(key), "\"%s\"", circuit);
+
+    const char *p = json;
+    while ((p = strstr(p, key)) != NULL) {
+        const char *q = p + strlen(key);
+        while (*q == ' ' || *q == '\t' || *q == '\n' || *q == '\r') q++;
+        if (*q == ':') {
+            q++;
+            while (*q == ' ' || *q == '\t' || *q == '\n' || *q == '\r') q++;
+            if (*q == '{') return q;
+        }
+        p += strlen(key);
+    }
+    return NULL;
+}
+
+/* Retorna ponteiro para o '}' que fecha o objeto iniciado em p ('{'). */
+static const char *object_end(const char *p)
+{
+    int depth = 0;
+    while (*p) {
+        if (*p == '{') depth++;
+        else if (*p == '}') { if (--depth == 0) return p; }
+        else if (*p == '\"') {
+            p++;
+            while (*p && *p != '\"') {
+                if (*p == '\\' && p[1]) p++;
+                p++;
+            }
+        }
+        p++;
+    }
+    return NULL;
+}
+
+int pin_map_load_circuit(pin_map_t *map, const char *json_str,
+                         const char *circuit,
+                         pin_init_t *inits, uint8_t max_inits)
+{
+    const char *obj = find_circuit(json_str, circuit);
+    if (!obj) return -1;
+
+    /* "pins" e o primeiro array do objeto — o parser existente pula ate '['. */
+    if (pin_map_parse_json(map, obj) != 0) return -1;
+
+    int total = 0;
+    const char *end = object_end(obj);
+    if (!end) return -1;
+
+    /* "virtual_init": busca a chave dentro do objeto do circuito. */
+    const char *p = obj;
+    const char *vi = NULL;
+    while (p < end) {
+        if (strncmp(p, "\"virtual_init\"", 14) == 0) { vi = p; break; }
+        p++;
+    }
+    if (!vi) return 0;
+
+    p = strchr(vi, ':') + 1;
+    while (*p && *p != '{') p++;
+    if (*p != '{') return 0;
+
+    p++;
+    while (*p && *p != '}') {
+        if (*p == '\"') {
+            p++;
+            pin_init_t tmp;
+            int i = 0;
+            while (*p && *p != '\"' && i < MAX_PIN_NAME_LEN - 1)
+                tmp.name[i++] = *p++;
+            tmp.name[i] = '\0';
+            const char *colon = strchr(p, ':');
+            if (!colon || colon > end) break;
+            tmp.value = (uint8_t)strtol(colon + 1, (char**)&p, 10);
+            if (inits && total < max_inits)
+                inits[total] = tmp;
+            total++;
+        } else {
+            p++;
+        }
+    }
+    return total;
+}
+
 int pin_map_get_bit(const pin_map_t *map, const char *name)
 {
     for (int i = 0; i < map->count; i++) {
