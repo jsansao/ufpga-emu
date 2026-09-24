@@ -188,7 +188,7 @@ class ViewerTab(ttk.Frame):
                 self._sim_result = ("erro", err)
                 return
             self._sim_result = ("compilado", None)
-            out, err = run_example(binary, csv_path, seconds=3)
+            out, err = run_example(binary, csv_path, seconds=3, poll_hz=5)
             self._sim_result = ("pronto", out if err is None else f"erro: {err}")
 
         self._sim_thread = threading.Thread(target=work, daemon=True)
@@ -198,7 +198,7 @@ class ViewerTab(ttk.Frame):
     def _poll_sim(self):
         if self._sim_thread and self._sim_thread.is_alive():
             if self._sim_result and self._sim_result[0] == "compilado":
-                self.sim_status.configure(text="executando (3s)...")
+                self.sim_status.configure(text="executando (3s, ~20 amostras)...")
             self.after(150, self._poll_sim)
             return
         if self._sim_result:

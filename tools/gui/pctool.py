@@ -279,15 +279,54 @@ def compile_example(circuit, workdir="/tmp/ufpga_gui"):
     return binary, None
 
 
-def run_example(binary, csv=None, seconds=2):
-    """Roda o binário capturando stdout. Retorna (texto, erro)."""
+def run_example(binary, csv=None, seconds=2, poll_hz=None):
+    """Roda o binário capturando stdout. Retorna (texto, erro).
+
+    poll_hz: bombeia "status\\n" via stdin a esta taxa p/ densificar o trace
+    (o firmware imprime 1 snapshot/s por conta própria; com poll_hz >= 2 os
+    wakes nunca deixam o gate de 1 Hz ser starved). None = comportamento antigo.
+    """
     env = os.environ.copy()
     if csv:
         env["STIMULUS_CSV"] = csv
     try:
         proc = subprocess.Popen(
             [binary], env=env, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True)
+            stderr=subprocess.STDOUT, text=True,
+            stdin=subprocess.PIPE if poll_hz else None, bufsize=1)
+    except Exception as e:  # noqa: BLE001
+        return None, f"falha ao executar simulação: {e}"
+
+    out_lines = []
+
+    def reader():
+        try:
+            for line in proc.stdout:
+                out_lines.append(line)
+        except Exception:  # noqa: BLE001 — pipe fechou
+            pass
+
+    if poll_hz:
+        reader_t = threading.Thread(target=reader, daemon=True)
+        reader_t.start()
+        interval = 1.0 / poll_hz
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < seconds and proc.poll() is None:
+            try:
+                proc.stdin.write("status\n")
+                proc.stdin.flush()
+            except (BrokenPipeError, ValueError, OSError):
+                break
+            time.sleep(interval)
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:  # pragma: no cover — mata se ignorar
+            proc.kill()
+            proc.wait(timeout=2)
+        return "".join(out_lines), None
+
+    try:
         try:
             out, _ = proc.communicate(timeout=seconds)
             return out, None
