@@ -19,6 +19,12 @@ de exemplo sem tocar em terminal, JSON ou `platformio.ini`.
 - **Executar na simulação PC**: usa o CSV de estímulo quando existir
   (19 circuitos têm `stim_*.csv`); mostra evolução de inputs/outputs em texto.
   Circuitos sem CSV: exibe o fonte e permite programar no hardware, sem simulação.
+- **Testbench editável**: área de texto com o CSV pré-carregado; o aluno
+  edita e o botão Simular valida (3 colunas, sinais contra o pinmap do
+  exemplo, saídas rejeitadas) e roda com o texto editado (temporário — o CSV
+  do repo nunca é alterado). O sinal especial `inputs` (packed) é expandido
+  em linhas por sinal no lado da GUI, pois o runtime o ignora; o header é
+  sempre emitido (o runtime descarta a linha 1).
 - **Programar no ESP32** (se placa conectada): flasha o env correspondente e
   abre o monitor ao vivo (mesmo monitor do modo B).
 

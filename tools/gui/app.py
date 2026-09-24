@@ -9,7 +9,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
-from pctool import (ROOT, compile_example, example_csv, example_has_pc_sim,
+from pctool import (ROOT, compile_example, example_has_pc_sim,
                     run_example)
 
 
@@ -81,6 +81,13 @@ class ViewerTab(ttk.Frame):
         self.source = tk.Text(right, height=12, state="disabled")
         self.source.pack(fill="both", expand=True)
 
+        stimframe = ttk.LabelFrame(right, text="Testbench (estímulo CSV — editável)")
+        stimframe.pack(fill="x", padx=0, pady=4)
+        self.stim = tk.Text(stimframe, height=5)
+        self.stim.pack(fill="both", expand=True)
+        self.stim_hint = ttk.Label(stimframe, text="")
+        self.stim_hint.pack(anchor="w")
+
         simrow = ttk.Frame(right)
         simrow.pack(fill="x", pady=4)
         self.sim_button = ttk.Button(simrow, text="Simular no PC",
@@ -90,7 +97,7 @@ class ViewerTab(ttk.Frame):
         self.sim_status.pack(side="left", padx=8)
 
         ttk.Label(right, text="Trace da simulação").pack(anchor="w")
-        self.trace = tk.Text(right, height=8, state="disabled")
+        self.trace = tk.Text(right, height=6, state="disabled")
         self.trace.pack(fill="both", expand=True)
 
         if self.names:
@@ -116,6 +123,19 @@ class ViewerTab(ttk.Frame):
         self.source.delete("1.0", "end")
         self.source.insert("end", src)
         self.source.configure(state="disabled")
+        from pctool import stimulus_text
+        text, err = stimulus_text(name)
+        self.stim.delete("1.0", "end")
+        if err:
+            self.stim_hint.configure(text="")
+            self._log(f"estímulo de {name}: {err}")
+        elif text is None:
+            self.stim_hint.configure(
+                text="sem estímulo embutido — escreva o seu ou simule sem")
+        else:
+            self.stim.insert("end", text)
+            self.stim_hint.configure(
+                text="estímulo do exemplo — pode editar e simular de novo")
 
     def _set_trace(self, text):
         self.trace.configure(state="normal")
@@ -133,6 +153,31 @@ class ViewerTab(ttk.Frame):
             return
         if self._sim_thread and self._sim_thread.is_alive():
             return
+        from pctool import example_signals, validate_stimulus
+        signals, err = example_signals(name)
+        if err:
+            self.sim_status.configure(text="sem simulação PC para este exemplo")
+            self._log(f"{name}: {err}")
+            return
+        edited = self.stim.get("1.0", "end")
+        expanded, verr = validate_stimulus(edited, signals)
+        if verr:
+            self.sim_status.configure(text="testbench inválido — veja o trace")
+            self._set_trace(f"Testbench com problema:\n{verr}")
+            self._log(f"testbench inválido p/ {name}: {verr[:150]}")
+            return
+        csv_path = None
+        if expanded is not None:
+            import os
+            import tempfile
+            csv_path = os.path.join(tempfile.gettempdir(), "ufpga_gui_stim.csv")
+            try:
+                with open(csv_path, "w") as f:
+                    f.write(expanded)
+            except OSError as e:
+                self.sim_status.configure(text="falhou (ver trace)")
+                self._set_trace(f"não consegui salvar o testbench: {e}")
+                return
         self.sim_button.configure(state="disabled")
         self.sim_status.configure(text="compilando...")
         self._sim_result = None
@@ -142,9 +187,8 @@ class ViewerTab(ttk.Frame):
             if err:
                 self._sim_result = ("erro", err)
                 return
-            csv = example_csv(name)
             self._sim_result = ("compilado", None)
-            out, err = run_example(binary, csv, seconds=3)
+            out, err = run_example(binary, csv_path, seconds=3)
             self._sim_result = ("pronto", out if err is None else f"erro: {err}")
 
         self._sim_thread = threading.Thread(target=work, daemon=True)

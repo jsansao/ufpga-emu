@@ -90,6 +90,9 @@ verificar → mapear → programar o ESP32 → monitorar com toggles).
 python3 tools/gui/app.py
 ```
 
+Aba Exemplos inclui área de testbench editável (CSV de estímulo aplicado à
+simulação PC, com validação e expansão do sinal `inputs`).
+
 Ver intenção em `docs/intent/gui-didatica.md`, spec em
 `docs/spec/gui-didatica.md` e setup do laboratório em
 `docs/gui-lab-setup.md`.

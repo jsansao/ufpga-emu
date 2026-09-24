@@ -57,3 +57,61 @@ def test_allocated_entry_has_valid_schema():
         assert isinstance(p["bit"], int) and p["bit"] >= 0
         assert p["dir"] in ("input", "output")
         assert p["name"] and len(p["name"]) < 32
+
+
+def test_example_signals_counter():
+    from pctool import example_signals
+    signals, err = example_signals("counter")
+    assert err is None, err
+    assert signals["rst"] == {"pin": 2, "bit": 1, "dir": "input"}
+    assert signals["count[0]"]["dir"] == "output"
+    assert "clk" in signals
+
+
+def test_example_signals_no_harness():
+    from pctool import example_signals
+    signals, err = example_signals("task_func")
+    assert signals is None and err
+
+
+def test_validate_named_signals():
+    from pctool import example_signals, validate_stimulus
+    signals, _ = example_signals("counter")
+    out, err = validate_stimulus("time_us,signal,value\n0,rst,1\n5,rst,0\n",
+                                 signals)
+    assert err is None, err
+    assert out.splitlines()[0] == "time_us,signal,value"
+    assert "0,rst,1" in out and "5,rst,0" in out
+
+
+def test_validate_inputs_expansion():
+    from pctool import example_signals, validate_stimulus
+    signals, _ = example_signals("adder_n")
+    # a[0..3] bits 0..3, b[0..3] bits 4..7 → 17 = a[0]+b[0]
+    out, err = validate_stimulus("0,inputs,17\n", signals)
+    assert err is None, err
+    rows = dict((l.split(",")[1], int(l.split(",")[2]))
+                for l in out.splitlines()[1:])
+    assert rows["a[0]"] == 1 and rows["b[0]"] == 1
+    assert rows["a[1]"] == 0 and rows["b[3]"] == 0
+    assert len(rows) == 8
+
+
+def test_validate_rejects_input_output_overflow():
+    from pctool import example_signals, validate_stimulus
+    signals, _ = example_signals("counter")
+    _, err = validate_stimulus("0,nope,1\n", signals)
+    assert err and "rst" in err and "clk" in err
+    _, err = validate_stimulus("0,count[0],1\n", signals)
+    assert err and "saída" in err
+    _, err = validate_stimulus("0,rst,7\n", signals)
+    assert err and "só 0 ou 1" in err
+    _, err = validate_stimulus("0,inputs,999999\n", signals)
+    assert err and "não cabe" in err
+
+
+def test_validate_empty_means_no_stimulus():
+    from pctool import example_signals, validate_stimulus
+    signals, _ = example_signals("counter")
+    out, err = validate_stimulus("  \n# comentário\n", signals)
+    assert err is None and out is None
