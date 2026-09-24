@@ -39,6 +39,7 @@ Compilar e testar o projeto uFPGA-Emu em hardware real (ESP32, RP2040, Raspberry
 
 ## Next Steps
 - ✅ **Limpeza de órfãos:** removidos 15 `stim_test_*.c` sem underscore (ex.: `stim_test_addern.c`) + `main_rp2040.cpp.bak`/`.full` — zero referências (verificado por nome exato + globs `+<stim_test_*>` do `platformio.ini`); 109/109 testes mantidos.
+- ✅ **GUI didática v1 (`tools/gui/`, Tkinter):** entrevista de intenção + spec em `docs/intent/gui-didatica.md`, `docs/spec/gui-didatica.md` e `docs/gui-lab-setup.md` (setup do professor + checklist do piloto). Implementada em fatias T1–T10: esqueleto, wrapper `pc_tool` como lib (`tools/gui/pctool.py`, sem `sys.exit`), visualizador (26 exemplos + sim PC via `gcc` direto + trace), alocador automático ESP32 (`tools/gui/allocator.py` + `tests/test_gui.py`, 5 testes), construtor (editar→verificar→mapear→programar via `pio` com log ao vivo, env `esp32-gui-<nome>` com marcadores, built-ins protegidos), monitor (telemetria + toggles `vset` + leituras, clk/rst sem toggle). **114/114 testes.** Validado de ponta a ponta no ESP32 com circuitos descartáveis (`gui_smoke_t7`, `gui_final_mux`: programar em ~40s + toggles no monitor; revertidos). 2 bugs reais achados pelos smokes e corrigidos: log Tk chamado da worker thread (fila thread-safe) e `cget("state")` em widget ttk (usar `instate`). Screenshots sob Xvfb verificados. Circuitos locais `meu_circuito`/`pwmx` (experimentos via GUI, fora do commit).
 - *(aguardar novas definições)*
 
 ## Key Decisions
