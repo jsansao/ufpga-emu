@@ -80,6 +80,20 @@ python3 -m pc_tool.pinmap_gen
 
 O modo default valida todos os JSONs e regenera `firmware/src/pinmap_*.h` (cadeia `#if` de circuitos + JSON embutido). Detalhes do schema em [Pinmaps por Plataforma (JSON)](#pinmaps-por-plataforma-json).
 
+## GUI didática (`tools/gui/`)
+
+App desktop Tkinter para uso em laboratório (sem terminal): aba **Exemplos**
+(26 circuitos, fonte + simulação PC) e aba **Novo circuito** (editar →
+verificar → mapear → programar o ESP32 → monitorar com toggles).
+
+```bash
+python3 tools/gui/app.py
+```
+
+Ver intenção em `docs/intent/gui-didatica.md`, spec em
+`docs/spec/gui-didatica.md` e setup do laboratório em
+`docs/gui-lab-setup.md`.
+
 ## Workflow: Adicionar um Novo Circuito
 
 ### 1. Verilog
