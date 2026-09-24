@@ -140,6 +140,115 @@ def example_csv(circuit):
     return None
 
 
+def stimulus_text(circuit):
+    """Texto do CSV de estímulo do exemplo, ou None. Retorna (texto, erro)."""
+    path = example_csv(circuit)
+    if path is None:
+        return None, None
+    try:
+        with open(path) as f:
+            return f.read(), None
+    except OSError as e:
+        return None, f"erro ao ler estímulo: {e}"
+
+
+def example_signals(circuit):
+    """Sinais do <circuit>_main.c: {nome: {pin, bit, dir}}. Erro ou (mapa, None).
+
+    Usa o pinmap embutido no próprio main do exemplo (formato antigo,
+    diferente de firmware/pinmaps/*.json).
+    """
+    import json
+    import re
+    main_path = os.path.join(EXAMPLES_SRC, f"{circuit}_main.c")
+    if not os.path.exists(main_path):
+        return None, f"sem harness PC para '{circuit}'"
+    with open(main_path) as f:
+        text = f.read()
+    m = re.search(r"pinmap_json\s*=\s*((?:\s*\"(?:[^\"\\]|\\.)*\")+\s*);",
+                  text)
+    if not m:
+        return None, f"pinmap não encontrado em {circuit}_main.c"
+    parts = re.findall(r'"((?:[^"\\]|\\.)*)"', m.group(1))
+    try:
+        import ast
+        text_json = "".join(ast.literal_eval(f'"{p}"') for p in parts)
+        pins = json.loads(text_json)
+    except (ValueError, SyntaxError):
+        return None, f"pinmap ilegível em {circuit}_main.c"
+    out = {}
+    for p in pins:
+        try:
+            out[p["name"]] = {"pin": int(p["pin"]), "bit": int(p["bit"]),
+                              "dir": p["dir"]}
+        except (KeyError, ValueError, TypeError):
+            return None, f"binding inválido em {circuit}_main.c: {p}"
+    return out, None
+
+
+def validate_stimulus(text, signals):
+    """Valida e expande o CSV editado. Retorna (csv_pronto|None, erro).
+
+    - None (sem erro) = texto vazio: simular sem estímulo.
+    - Expande o sinal especial `inputs` (packed) em linhas por sinal.
+    - Sempre emite header: o runtime descarta a linha 1 incondicionalmente.
+    """
+    rows = []
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if lineno == 1 and not line[0].isdigit():
+            continue  # header
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 3:
+            return None, f"linha {lineno}: esperado tempo,sinal,valor — achei: {raw.strip()[:60]}"
+        t_s, sig, v_s = parts[0], parts[1], parts[2]
+        try:
+            t = int(t_s)
+            if t < 0:
+                raise ValueError
+        except ValueError:
+            return None, f"linha {lineno}: tempo inválido '{t_s}' (use inteiro ≥ 0)"
+        try:
+            v = int(v_s)
+        except ValueError:
+            return None, f"linha {lineno}: valor inválido '{v_s}' (use inteiro)"
+        if sig == "inputs":
+            if v < 0:
+                return None, f"linha {lineno}: inputs negativo"
+            ordered = sorted(
+                ((b["bit"], n) for n, b in signals.items()
+                 if b["dir"] == "input"),
+                key=lambda pair: pair[0])
+            width = max((bit for bit, _ in ordered), default=-1) + 1
+            if v >= (1 << width):
+                return None, (f"linha {lineno}: inputs={v} não cabe em "
+                               f"{width} bits de entrada")
+            for bit, name in ordered:
+                rows.append((t, name, (v >> bit) & 1))
+        else:
+            b = signals.get(sig)
+            if b is None:
+                valid = ", ".join(sorted(
+                    n for n, x in signals.items() if x["dir"] == "input"))
+                return None, (f'linha {lineno}: sinal "{sig}" não existe. '
+                               f"Entradas válidas: {valid}")
+            if b["dir"] != "input":
+                return None, (f'linha {lineno}: "{sig}" é saída — '
+                               "estímulo só vale em entradas")
+            if v not in (0, 1):
+                return None, (f'linha {lineno}: "{sig}" aceita só 0 ou 1 '
+                               f"(veio {v})")
+            rows.append((t, sig, v))
+    if not rows:
+        return None, None
+    rows.sort(key=lambda r: r[0])
+    out = ["time_us,signal,value"]
+    out += [f"{t},{s},{v}" for t, s, v in rows]
+    return "\n".join(out) + "\n", None
+
+
 def example_has_pc_sim(circuit):
     """True se há <circuit>.c + <circuit>_main.c para simulação PC."""
     return (os.path.exists(os.path.join(EXAMPLES_SRC, f"{circuit}.c"))
