@@ -115,3 +115,37 @@ def test_validate_empty_means_no_stimulus():
     signals, _ = example_signals("counter")
     out, err = validate_stimulus("  \n# comentário\n", signals)
     assert err is None and out is None
+
+
+_counter_binary = None
+
+
+def _counter_binary_cached():
+    """Compila counter uma vez por sessão de testes."""
+    global _counter_binary
+    if _counter_binary is None:
+        import pytest
+        from pctool import compile_example
+        binary, err = compile_example("counter", workdir="/tmp/ufpga_guitest")
+        if err:
+            pytest.fail(f"compile_example('counter') falhou: {err[:300]}")
+        _counter_binary = binary
+    return _counter_binary
+
+
+def test_run_example_poll_densifies_trace():
+    from pctool import run_example
+    binary = _counter_binary_cached()
+    out, err = run_example(binary, seconds=2, poll_hz=5)
+    assert err is None, err
+    n_clk = sum(1 for l in out.splitlines() if l.startswith("CLK="))
+    assert n_clk >= 8, f"esperado >=8 snapshots com poll_hz=5, veio {n_clk}"
+
+
+def test_run_example_without_poll_keeps_sparse_output():
+    from pctool import run_example
+    binary = _counter_binary_cached()
+    out, err = run_example(binary, seconds=2)
+    assert err is None, err
+    n_clk = sum(1 for l in out.splitlines() if l.startswith("CLK="))
+    assert n_clk <= 4, f"sem poll deveria ser esparso (<=4), veio {n_clk}"
