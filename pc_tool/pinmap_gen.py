@@ -101,8 +101,10 @@ def gen_header(plat, data):
 
 
 def regen():
+    """Regenera os headers. Retorna a lista de plataformas processadas."""
     names = sorted(f for f in os.listdir(PINMAP_DIR) if f.endswith('.json'))
     assert names, f'nenhum .json em {PINMAP_DIR}'
+    plats = []
     for fn in names:
         plat = fn[:-5]
         with open(os.path.join(PINMAP_DIR, fn)) as f:
@@ -111,7 +113,9 @@ def regen():
         out = os.path.join(SRC_DIR, f'pinmap_{plat}.h')
         with open(out, 'w') as f:
             f.write(gen_header(plat, data))
+        plats.append(plat)
         print(f'{out} ({len(data)} circuitos)')
+    return plats
 
 
 def make_template(verilog_path, top_name):

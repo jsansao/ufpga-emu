@@ -10,7 +10,6 @@ import os
 import queue
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import threading
@@ -107,24 +106,12 @@ def template_entry(verilog_path, top=None):
 
 
 def regen_headers():
-    """Regenera pinmap_*.h. Retorna (lista de plataformas, erro)."""
+    """Regenera pinmap_*.h via pinmap_gen.regen(). Retorna (plataformas, erro)."""
     try:
         from pc_tool import pinmap_gen
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            plats = []
-            for fn in sorted(os.listdir(pinmap_gen.PINMAP_DIR)):
-                if not fn.endswith(".json"):
-                    continue
-                plat = fn[:-5]
-                with open(os.path.join(pinmap_gen.PINMAP_DIR, fn)) as f:
-                    import json
-                    data = json.load(f)
-                pinmap_gen.validate(plat, data)
-                out = os.path.join(pinmap_gen.SRC_DIR, f"pinmap_{plat}.h")
-                with open(out, "w") as f:
-                    f.write(pinmap_gen.gen_header(plat, data))
-                plats.append(plat)
+            plats = pinmap_gen.regen()
         return plats, None
     except AssertionError as e:
         return None, f"pinmap invalido: {e}"
@@ -194,12 +181,15 @@ def validate_stimulus(text, signals):
     - Sempre emite header: o runtime descarta a linha 1 incondicionalmente.
     """
     rows = []
+    first_content = True
     for lineno, raw in enumerate(text.splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        if lineno == 1 and not line[0].isdigit():
-            continue  # header
+        if first_content and not line[0].isdigit():
+            first_content = False
+            continue  # header (pode vir depois de linhas em branco/comentário)
+        first_content = False
         parts = [p.strip() for p in line.split(",")]
         if len(parts) < 3:
             return None, f"linha {lineno}: esperado tempo,sinal,valor — achei: {raw.strip()[:60]}"
@@ -255,20 +245,35 @@ def example_has_pc_sim(circuit):
             and os.path.exists(os.path.join(EXAMPLES_SRC, f"{circuit}_main.c")))
 
 
+_example_binaries = {}
+
+
 def compile_example(circuit, workdir="/tmp/ufpga_gui"):
-    """Compila o exemplo p/ PC. Retorna (caminho do binário, erro)."""
-    os.makedirs(workdir, exist_ok=True)
+    """Compila o exemplo p/ PC. Retorna (caminho do binário, erro).
+
+    Cache por circuito: recompila só se os fontes mudarem (mtime).
+    Concorrência benigna: duas threads podem compilar 1× cada no race.
+    """
     binary = os.path.join(workdir, f"sim_{circuit}")
+    src_files = [os.path.join(EXAMPLES_SRC, f"{circuit}.c"),
+                 os.path.join(EXAMPLES_SRC, f"{circuit}_main.c")]
+    try:
+        sig = tuple(os.path.getmtime(p) for p in src_files)
+    except OSError as e:
+        return None, f"fonte do exemplo ausente: {e}"
+    cached = _example_binaries.get(circuit)
+    if cached and cached[0] == sig and os.path.exists(cached[1]):
+        return cached[1], None
+
+    os.makedirs(workdir, exist_ok=True)
     hal_src = [os.path.join(HAL_SRC_DIR, f) for f in
                ("hal_gpio.c", "hal_timer.c", "hal_stimulus.c",
                 "hal_mutex.c", "hal_serial.c")]
     runtime_src = [os.path.join(RUNTIME_SRC_DIR, f) for f in
                    ("emulator.c", "pin_map.c", "telemetry.c", "vcd_writer.c")]
-    src = [os.path.join(EXAMPLES_SRC, f"{circuit}.c"),
-           os.path.join(EXAMPLES_SRC, f"{circuit}_main.c")]
     cmd = (["gcc", "-I" + HAL_INC_DIR, "-I" + RUNTIME_INC_DIR,
             "-I" + FW_SRC_DIR]
-           + src + hal_src + runtime_src
+           + src_files + hal_src + runtime_src
            + ["-lpthread", "-o", binary])
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=120)
@@ -276,18 +281,58 @@ def compile_example(circuit, workdir="/tmp/ufpga_gui"):
         return None, f"falha ao invocar gcc: {e}"
     if r.returncode != 0:
         return None, "erro de compilação:\n" + r.stderr.decode()[-2000:]
+    _example_binaries[circuit] = (sig, binary)
     return binary, None
 
 
-def run_example(binary, csv=None, seconds=2):
-    """Roda o binário capturando stdout. Retorna (texto, erro)."""
+def run_example(binary, csv=None, seconds=2, poll_hz=None):
+    """Roda o binário capturando stdout. Retorna (texto, erro).
+
+    poll_hz: bombeia "status\\n" via stdin a esta taxa p/ densificar o trace
+    (o firmware imprime 1 snapshot/s por conta própria; com poll_hz >= 2 os
+    wakes nunca deixam o gate de 1 Hz ser starved). None = comportamento antigo.
+    """
     env = os.environ.copy()
     if csv:
         env["STIMULUS_CSV"] = csv
     try:
         proc = subprocess.Popen(
             [binary], env=env, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True)
+            stderr=subprocess.STDOUT, text=True,
+            stdin=subprocess.PIPE if poll_hz else None, bufsize=1)
+    except Exception as e:  # noqa: BLE001
+        return None, f"falha ao executar simulação: {e}"
+
+    out_lines = []
+
+    def reader():
+        try:
+            for line in proc.stdout:
+                out_lines.append(line)
+        except Exception:  # noqa: BLE001 — pipe fechou
+            pass
+
+    if poll_hz:
+        reader_t = threading.Thread(target=reader, daemon=True)
+        reader_t.start()
+        interval = 1.0 / poll_hz
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < seconds and proc.poll() is None:
+            try:
+                proc.stdin.write("status\n")
+                proc.stdin.flush()
+            except (BrokenPipeError, ValueError, OSError):
+                break
+            time.sleep(interval)
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:  # pragma: no cover — mata se ignorar
+            proc.kill()
+            proc.wait(timeout=2)
+        return "".join(out_lines), None
+
+    try:
         try:
             out, _ = proc.communicate(timeout=seconds)
             return out, None

@@ -25,6 +25,9 @@ de exemplo sem tocar em terminal, JSON ou `platformio.ini`.
   do repo nunca é alterado). O sinal especial `inputs` (packed) é expandido
   em linhas por sinal no lado da GUI, pois o runtime o ignora; o header é
   sempre emitido (o runtime descarta a linha 1).
+- **Trace denso**: a GUI bombeia `status\n` via stdin a 5 Hz durante os 3 s
+  de simulação (~18-20 snapshots em vez de 2-3 do print de 1 Hz do firmware;
+  sem mudança no toolchain).
 - **Programar no ESP32** (se placa conectada): flasha o env correspondente e
   abre o monitor ao vivo (mesmo monitor do modo B).
 
