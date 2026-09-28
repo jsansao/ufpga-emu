@@ -117,25 +117,32 @@ def test_validate_empty_means_no_stimulus():
     assert err is None and out is None
 
 
-_counter_binary = None
+def test_validate_header_after_blank_or_comment():
+    from pctool import example_signals, validate_stimulus
+    signals, _ = example_signals("counter")
+    # branco ou comentário antes do header continuam válidos
+    for text in ("\ntime_us,signal,value\n0,rst,1\n",
+                 "# comentario\ntime_us,signal,value\n0,rst,1\n"):
+        out, err = validate_stimulus(text, signals)
+        assert err is None, (text, err)
+        assert out and "0,rst,1" in out
+    # header no meio (depois de dado) segue rejeitado
+    _, err = validate_stimulus("0,rst,1\ntime_us,signal,value\n", signals)
+    assert err is not None
 
 
-def _counter_binary_cached():
-    """Compila counter uma vez por sessão de testes."""
-    global _counter_binary
-    if _counter_binary is None:
+def _counter_binary():
+    from pctool import compile_example
+    binary, err = compile_example("counter", workdir="/tmp/ufpga_guitest")
+    if err:
         import pytest
-        from pctool import compile_example
-        binary, err = compile_example("counter", workdir="/tmp/ufpga_guitest")
-        if err:
-            pytest.fail(f"compile_example('counter') falhou: {err[:300]}")
-        _counter_binary = binary
-    return _counter_binary
+        pytest.fail(f"compile_example('counter') falhou: {err[:300]}")
+    return binary
 
 
 def test_run_example_poll_densifies_trace():
     from pctool import run_example
-    binary = _counter_binary_cached()
+    binary = _counter_binary()
     out, err = run_example(binary, seconds=2, poll_hz=5)
     assert err is None, err
     n_clk = sum(1 for l in out.splitlines() if l.startswith("CLK="))
@@ -144,8 +151,22 @@ def test_run_example_poll_densifies_trace():
 
 def test_run_example_without_poll_keeps_sparse_output():
     from pctool import run_example
-    binary = _counter_binary_cached()
+    binary = _counter_binary()
     out, err = run_example(binary, seconds=2)
     assert err is None, err
     n_clk = sum(1 for l in out.splitlines() if l.startswith("CLK="))
     assert n_clk <= 4, f"sem poll deveria ser esparso (<=4), veio {n_clk}"
+
+
+def test_compile_example_caches_by_mtime():
+    from unittest import mock
+    import pctool
+    binary1 = _counter_binary()
+    assert binary1 is not None
+    with mock.patch.object(pctool.subprocess, "run",
+                           wraps=pctool.subprocess.run) as run:
+        binary2, err = pctool.compile_example("counter",
+                                              workdir="/tmp/ufpga_guitest")
+        assert err is None, err
+        assert run.call_count == 0, "segunda chamada deveria vir do cache"
+    assert binary1 == binary2
